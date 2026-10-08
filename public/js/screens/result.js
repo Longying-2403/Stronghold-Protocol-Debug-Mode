@@ -1,6 +1,6 @@
 // Result screen (research 06 §10.6): victory / defeat hero with rounds passed, boss medallions, and a
 // card per player — band, final lineup avatars with elite marks, stats, title (评语) with its icon —
-// plus 返回同盟.
+// plus 返回同盟. A debug room's match (DESIGN §27) carries the DEBUG mark.
 //
 // Expected m.result (free-form in DESIGN §8.2; fields read tolerantly, see gameLogic.normalizeResult):
 //   { victory, roundsPassed, lastRound?, hiddenCleared?, bossId?, hiddenBossId?, difficulty?, modeId?, durationMs?,
@@ -24,6 +24,7 @@ import { enemyIconUrl, titleIconUrl, uiUrl } from '../ui/assetUrls.js';
 import { store, useStore, emptyMatch } from '../store.js';
 import { audio } from '../audio.js';
 import { sentText } from '../ui/lang.js';
+import { DebugBadge } from '../ui/debugRoom.js';
 import { t, tParts, N_ } from '../../../shared/i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
@@ -109,6 +110,8 @@ export function ResultScreen() {
   const pub = useStore((s) => s.match.public);
   const myId = useStore((s) => s.me.playerId);
   const hasRoom = useStore((s) => !!s.room);
+  // a debug room's match (DESIGN §27): the settlement says so (m.public.debug, else the room)
+  const debug = useStore((s) => !!(s.match.public?.debug || s.room?.debug));
   const gd = useGameData();
   const r = normalizeResult(res, pub);
   const titles = Array.isArray(gd.config?.titles) ? gd.config.titles : [];
@@ -133,6 +136,7 @@ export function ResultScreen() {
       <section class="result__hero">
         <div class="result__logo"><${Sprite} k="entry/season_logo_settle" class="result__logoimg" fallback=${html`<${MicroLabel} tone="mint">STRONGHOLD PROTOCOL</${MicroLabel}>`} /></div>
         ${r.difficulty ? html`<${DifficultyTag} difficulty=${r.difficulty} size="lg" />` : null}
+        ${debug ? html`<${DebugBadge} class="result__debug" />` : null}
         <h1 class="result__headline">${r.victory ? t('模拟完成') : t('模拟失败')}</h1>
         <p class="result__sub">${r.victory ? t('成功卫戍 · 敌方领袖已被击败') : t('防线已被突破')}</p>
         <div class="result__rounds">

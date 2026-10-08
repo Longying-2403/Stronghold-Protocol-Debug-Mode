@@ -1,6 +1,7 @@
 // server/match/match/prep.js — Match methods: the PREP phase — its start (deferred item merges, onPrepStart), the AI
 // seats' sliced preps (scheduleBotPrep: economy + layout, rehearsal, Ready), Ready and the deadline, and its end
-// (onPrepEnd, PlayerState.endPrep, then COMBAT or the Final Assault / Hidden Core).
+// (onPrepEnd, PlayerState.endPrep, then COMBAT or the Final Assault / Hidden Core — or a debug match's round.jump,
+// DESIGN §27).
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
 import { PHASE } from '../../../shared/constants.js';
@@ -22,8 +23,9 @@ export class MatchPrep {
       this.dispatch(ps, 'onPrepStart', { round: this.round });
       ps.recompute();
     }
-    // solo / single-human matches: untimed (soloUntimed); co-op: the round's prepTime
-    const secs = this.soloUntimed ? null : this.gd.prepTime(this.round);
+    // solo / single-human matches: untimed (soloUntimed); co-op: the round's prepTime — a debug match's frozen
+    // countdown (DESIGN §27) leaves it untimed until unfrozen
+    const secs = this.soloUntimed || this._debugPrepFrozen() ? null : this.gd.prepTime(this.round);
     this.setDeadline(secs, () => this.prepDeadline());
     let i = 0;
     for (const ps of alive) if (ps.botControlled) this.scheduleBotPrep(ps, i++);
@@ -126,6 +128,8 @@ export class MatchPrep {
     const alive = this.alivePlayers();
     for (const ps of alive) this.dispatch(ps, 'onPrepEnd', { round: this.round });
     for (const ps of alive) ps.endPrep();
+    // a debug match's round.jump (DESIGN §27): no battle, the round it names starts now
+    if (this._debugJumpNow()) return;
     const r = this.round;
     if (r === this.gd.bossRound) {
       this.hiddenLayerSum = alive.reduce((s, p) => s + p.activatedLayers(), 0);

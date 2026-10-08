@@ -13,7 +13,7 @@
 //                 is published by the runner (the m.field shape of the battle on screen, `local: true`).
 //   ticker      – recent `m.ticker` lines, emotes – recent `m.emote` events
 //   clock       – { offset, rtt } server clock correction: serverNow ≈ Date.now() + offset
-//   ui          – small bits of local UI state shared between screens
+//   ui          – small bits of local UI state shared between screens (debugRooms: welcome.debugRooms, DESIGN §27)
 //
 // The store is framework-agnostic (get/set/subscribe); `useStore(selector)` binds it to Preact.
 // Updates are immutable at the top level: `set` shallow-merges a patch object, `patch(key, obj)`
@@ -83,7 +83,8 @@ export const initialState = Object.freeze({
   ticker: [],
   emotes: [],
   clock: { offset: 0, rtt: null, synced: false },
-  ui: { pendingJoin: null, restoring: false, buildStale: false },
+  // debugRooms: the server opens debug rooms (welcome.debugRooms, DESIGN §27)
+  ui: { pendingJoin: null, restoring: false, buildStale: false, debugRooms: true },
 });
 
 /** The app-wide store singleton. */

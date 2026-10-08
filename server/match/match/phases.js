@@ -1,7 +1,8 @@
 // server/match/match/phases.js — Match methods: the round flow up to the prep — INFO_CHECK, the strategy draft
 // (BAND_DRAFT: one countdown of BAND_TURN_SECONDS per turn, 队友已选, the highlighted strategy on a timeout, skips),
 // BATTLE_CHECK and ROUND_START (the round's enemies — a normal wave or the boss pairing — planned before the players'
-// round start).
+// round start). A debug match (DESIGN §27, ./debug.js) presets strategies, starts at its start round and applies its
+// start state at the first round start.
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
 import { PHASE, ERR } from '../../../shared/constants.js';
@@ -49,6 +50,8 @@ export class MatchPhases {
       /** playerId → the strategy highlighted in the draft screen (g.bandFocus) */
       focus: new Map(),
     };
+    // a debug room's strategies by seat (DESIGN §27): picked now, the turns skip those seats
+    if (this.debug) this._debugPresetBands();
     this.setDeadline(0);
     this.startDraftTurn();
     this.markPublic();
@@ -219,7 +222,8 @@ export class MatchPhases {
 
   enterBattleCheck() {
     this.phase = PHASE.BATTLE_CHECK;
-    this.setDeadline(this.gd.timer('battleCheck'), () => this.startRound(1), { silent: this.soloUntimed });
+    // round 1 — a debug match's start.round (DESIGN §27)
+    this.setDeadline(this.gd.timer('battleCheck'), () => this.startRound(this._firstRound()), { silent: this.soloUntimed });
     this.markPublic();
   }
 
@@ -244,8 +248,12 @@ export class MatchPhases {
     } else {
       this.wave = buildNormalWave(this.gd, this.rngWaves, this.factions, r);
     }
+    // a debug match's first round (DESIGN §27): its shop is rolled at the start level, then the start funds / LP apply
+    const debugStart = !!this.debug && !this.debug.startDone;
+    if (debugStart) this._debugStartLevel(alive);
     for (const ps of alive) ps.startRound(r);
     for (const ps of alive) this.dispatch(ps, 'onRoundStart', { round: r });
+    if (debugStart) this._debugStartState(alive);
     // an eliminated player's pending 信标 gift still goes to its teammate (effects flagged afterElimination; GitHub #86)
     for (const ps of this.order) {
       if (ps.alive) continue;

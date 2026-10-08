@@ -196,7 +196,8 @@ while a battle runs (COMBAT / 最终攻势 / 隐秘核心 with a live field, not
 always. While paused (`m.public.paused`) the field clocks, the authority deadlines / release timers, the boss clock
 (overtime drain, silence watchdog) and the server pacers stand still; `_resume()` shifts `deadline`, `overtimeAt`, the
 fields' `startAt` / `lastProgressAt` and the boss start by the paused time and re-arms the timers. A disconnect or
-`onLeave` resumes; the battle phase ending clears it (`pausedMs` totals the paused time).
+`onLeave` resumes; the battle phase ending clears it (`pausedMs` totals the paused time). A debug match (DESIGN §27)
+lets its room's host pause a co-op battle too, 联防 included (anyone else → `NOT_HOST`).
 
 ### 1.4 Watching fields
 Client-side combat (the default, DESIGN §14 Spectating; `Match._watchClient`): `g.watch` answers with the field's

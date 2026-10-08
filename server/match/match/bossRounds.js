@@ -394,7 +394,8 @@ export class MatchBoss {
   _teamLpLoss(amount) {
     const n = Number(amount);
     if (this.teamLp == null || !Number.isFinite(n) || !(n > 0)) return;
-    this.teamLp = Math.max(0, this.teamLp - n);
+    // a debug match's LP lock (DESIGN §27): the team LP stays at 1 (never raised by it)
+    this.teamLp = Math.max(this._lpLocked() ? Math.min(1, this.teamLp) : 0, this.teamLp - n);
     if (this._bossLazyPublic()) { this._bossPublic(); return; }
     this._syncTeamLp();
     this.markPublic();
@@ -498,7 +499,8 @@ export class MatchBoss {
     this.markPublic();
     this.runner = null;
     if (!hidden) {
-      const eligible = victory && !!this.hiddenBossId && hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp });
+      // a debug room's forceHidden (DESIGN §27): a won Final Assault always opens the Hidden Core
+      const eligible = victory && !!this.hiddenBossId && (hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp }) || !!(this.debug && this.debug.config.forceHidden));
       this.later(this.scaled(DELAYS.SETTLE), () => {
         if (eligible) {
           this.hiddenReached = true;

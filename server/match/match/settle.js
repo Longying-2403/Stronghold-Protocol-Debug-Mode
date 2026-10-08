@@ -39,6 +39,8 @@ export class MatchSettle {
       const loss = uniteRan && plan.leakers.includes(ps) ? Math.min(cap, survivors.get(ps.playerId) || 0) : Math.min(cap, counted);
       if (this.uniteResultView) this.uniteResultView.losses[ps.playerId] = loss;
       ps.lp -= loss;
+      // a debug match's LP lock (DESIGN §27): never below 1, so nobody is eliminated by leaks
+      if (ps.lp < 1 && this._lpLocked()) ps.lp = 1;
       ps.stats.lpLost += loss;
       ps.stats.leaks += counted;
       ps.stats.kills += Number(r.killed) || 0;

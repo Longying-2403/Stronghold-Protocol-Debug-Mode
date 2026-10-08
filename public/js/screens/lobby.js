@@ -10,6 +10,9 @@
 // plays 战场#01, 险境 draws one of 8, 绝境 / 终极 one of 7 (m01 excluded).
 // Texts go through t() (docs/I18N.md); the module-level tables hold msgids (N_) translated where they are shown, the
 // config.json mode texts come localized from data.js.
+// Debug rooms (DESIGN §27, ui/debugMode.js): the key DBUG creates one of the chosen mode and difficulty (the 调试模式 switch
+// of the settings — the gear of the top bar — must be on; the player confirms first), and joining / spectating a key
+// that turns out to be a debug room asks the same confirmation before it goes again with `debugAck`.
 
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, ROOM_CODE_LEN, MAX_SEATS, MAX_SPECTATORS, modeIdFor, ERR } from '../../../shared/constants.js';
@@ -17,6 +20,9 @@ import { html, Button, Icon, MicroLabel, Panel, TextField, PingPill, AvatarFrame
 import { toast, toastError } from '../ui/toasts.js';
 import { GuideButton } from '../ui/guide.js';
 import { LoadoutButton } from './loadout.js';
+import { GIcon } from '../ui/gameComponents.js';
+import { SettingsModal } from '../ui/settings.js';
+import { isDebugCode, enterDebugRoom, joinWithAck } from '../ui/debugMode.js';
 import { net, identity } from '../net.js';
 import { store, useStore, shallowEqual, loadPref, savePref } from '../store.js';
 import { getConfig, getMode, getStage, useData } from '../data.js';
@@ -247,6 +253,7 @@ export function LobbyScreen() {
   });
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [recent] = useState(recentRooms);
   const alive = useRef(true);
   const inFlight = useRef(false); // synchronous guard against double clicks (state updates are async)
@@ -274,14 +281,17 @@ export function LobbyScreen() {
     // `undefined` — codeArg keeps an event target out of the key and falls back to the input field
     const k = codeArg(c, code);
     if (!k) { toast(t('同盟密钥为 {ROOM_CODE_LEN} 位字母或数字', { ROOM_CODE_LEN }), 'warn'); return; }
-    run('join', () => net.request('room.join', { code: k }));
+    // DBUG (DESIGN §27): a new debug room of the chosen mode and difficulty, after the confirmation
+    if (isDebugCode(k)) { run('join', () => enterDebugRoom({ mode: roomMode, difficulty })); return; }
+    run('join', () => joinWithAck('room.join', k));
   };
   // a spectator seat: no player seat taken, nothing to do but watch (also a match already running)
   const spectate = (c = code) => {
     // same guard as join: `onClick=${spectate}` passes the click event, not a code
     const k = codeArg(c, code);
     if (!k) { toast(t('同盟密钥为 {ROOM_CODE_LEN} 位字母或数字', { ROOM_CODE_LEN }), 'warn'); return; }
-    run('spectate', () => net.request('room.spectate', { code: k }).catch((err) => {
+    if (isDebugCode(k)) { toast(t('{code} 用于创建调试房间，不能观战：请点「加入同盟」', { code: k }), 'warn'); return; }
+    run('spectate', () => joinWithAck('room.spectate', k).catch((err) => {
       // Clearer than the bare ERR_TEXT: the usual cause is a code that is not the host's (a remembered one from an
       // earlier room, or another machine's) — the server can only answer "no such room".
       if (err?.code === ERR.ROOM_NOT_FOUND) {
@@ -313,6 +323,8 @@ export function LobbyScreen() {
       <div class="topbar__right">
         <${GuideButton} class="lobby-guide" variant="secondary" label=${t('玩法说明')} />
         <${LoadoutButton} from="lobby" size="sm" class="lobby-loadout" label=${t('干员调配')} />
+        <button type="button" class="gm__gear lobby-settings tapx" aria-label=${t('设置')} title=${t('设置')}
+          onClick=${() => setSettingsOpen(true)}><${GIcon} name="gear" /></button>
         <div class="me-chip">
           <${AvatarFrame} size="sm" name=${me.name} seat=${0} self=${true} />
           <div class="me-chip__text">
@@ -369,5 +381,6 @@ export function LobbyScreen() {
         </div>
       </section>
     </div>
+    <${SettingsModal} open=${settingsOpen} onClose=${() => setSettingsOpen(false)} />
   </div>`;
 }

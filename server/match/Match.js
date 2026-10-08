@@ -40,6 +40,11 @@
 //                                              sent. The platform then (synchronously) returns the room to
 //                                              LOBBY and (asynchronously, next macrotask) calls dispose().
 //                                              `summary` is free-form JSON (kept as room.lastSummary).
+//   opts.debug       object (optional)          a debug room's settings (DESIGN §27, shared/debug.js; the lobby's
+//                                              room.debugConfig): the match is a debug match — its setup overrides,
+//                                              start state and the g.debug operations (./match/debug.js)
+//   opts.hostId      () => string|null (opt.)   the room's current host (debug matches: who may use the host-only
+//                                              operations and pause a co-op battle)
 //
 // start()                   Called once, right after construction. Must broadcast the first m.public and send
 //                           each human its m.private. May call onEnd synchronously (the platform copes).
@@ -161,6 +166,8 @@
 //   bossRounds.js    FINAL_ASSAULT / HIDDEN_CORE: boss fields, the shared pool, plausibility budgets, the boss clock,
 //                    b.pool, the merged team LP, overtime, bounties after a boss field
 //   settle.js        SETTLE and RESULT
+//   debug.js         debug rooms (DESIGN §27): the start state, the g.debug operations (state, 取用, speed, the prep
+//                    timer, ending a battle, jumping to a round), the LP lock, m.public.debug
 //   common.js        what the modules share (FLOW_TICKER_PRIORITY, DELAYS, BAND_TURN_SECONDS — re-exported here, OK,
 //                    fail, BOSS_CLOCK_MS)
 
@@ -170,7 +177,7 @@ import { DataSource } from '../sim/simdata.js';
 import { createRng, deriveSeed } from '../sim/rng.js';
 import { GameData } from './gamedata.js';
 import { RealScheduler } from './scheduler.js';
-import { SharedPool, drawDisabledBonds } from './pool.js';
+import { SharedPool, drawDisabledBonds, bansFor } from './pool.js';
 import { PlayerState } from './PlayerState.js';
 import { EffectDispatcher, getDefaultRegistry } from './effectsMeta.js';
 import { setupMatchWaves } from './waves.js';
@@ -191,6 +198,7 @@ import { MatchReports } from './match/reports.js';
 import { MatchUnite } from './match/unitePhase.js';
 import { MatchBoss } from './match/bossRounds.js';
 import { MatchSettle } from './match/settle.js';
+import { MatchDebug, createDebugState } from './match/debug.js';
 
 export { FLOW_TICKER_PRIORITY, DELAYS, BAND_TURN_SECONDS } from './match/common.js';
 
@@ -276,6 +284,12 @@ export class Match {
     this._poolTimer = null;
     this._lastPoolKey = '';
     this.pacer = null;
+    /**
+     * A debug match (DESIGN §27, opts.debug): its settings and live switches (./match/debug.js createDebugState); null for
+     * every ordinary match. `hostIdFn`: the room's current host (opts.hostId).
+     */
+    this.debug = opts.debug ? createDebugState(opts.debug, this.data, this.modeId) : null;
+    this.hostIdFn = typeof opts.hostId === 'function' ? opts.hostId : null;
 
     const rng = (name) => createRng(deriveSeed(this.seed, name));
     this.rngSetup = rng('setup');
@@ -310,13 +324,17 @@ export class Match {
     this.loneHuman = this.order.filter((p) => !p.isBot).length === 1;
 
     // per-match setup (DESIGN §6.5)
-    const setup = setupMatchWaves(this.gd, this.rngSetup);
+    // a debug match's choices (DESIGN §27) replace the draws — every draw is still made, so the streams are unchanged
+    const dc = this.debug ? this.debug.config : null;
+    const setup = setupMatchWaves(this.gd, this.rngSetup, dc ? { stageId: dc.stageId, factions: dc.factions, bossId: dc.bossId, hiddenBossId: dc.hiddenBossId } : null);
     this.stageId = setup.stageId;
     this.stage = this.stageId ? this.gd.stage(this.stageId) : null;
     this.factions = setup.factions;
     this.bossId = setup.bossId;
     this.hiddenBossId = setup.hiddenBossId;
-    const bans = drawDisabledBonds(this.gd, this.rngSetup);
+    let bans = drawDisabledBonds(this.gd, this.rngSetup);
+    if (dc && dc.bans.mode === 'none') bans = bansFor(this.gd, []);
+    else if (dc && dc.bans.mode === 'custom') bans = bansFor(this.gd, dc.bans.bonds);
     this.disabledBonds = bans.drawn;
     this.staticInactiveBonds = bans.staticOff;
     this.bannedChess = bans.banned;
@@ -384,7 +402,7 @@ export class Match {
 }
 
 // the method modules, in this order (a name defined twice is an error, never a silent override)
-for (const part of [MatchPlatform, MatchInfra, MatchMessaging, MatchViews, MatchWatch, MatchIntents, MatchPause, MatchPhases, MatchSpDraft, MatchPrep, MatchCombat, MatchClientCombat, MatchReports, MatchUnite, MatchBoss, MatchSettle]) {
+for (const part of [MatchPlatform, MatchInfra, MatchMessaging, MatchViews, MatchWatch, MatchIntents, MatchPause, MatchPhases, MatchSpDraft, MatchPrep, MatchCombat, MatchClientCombat, MatchReports, MatchUnite, MatchBoss, MatchSettle, MatchDebug]) {
   for (const key of Reflect.ownKeys(part.prototype)) {
     if (key === 'constructor') continue;
     if (Object.prototype.hasOwnProperty.call(Match.prototype, key)) throw new Error(`Match.${String(key)} is defined twice`);

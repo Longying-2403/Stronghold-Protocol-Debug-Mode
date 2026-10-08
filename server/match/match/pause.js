@@ -11,15 +11,20 @@ export class MatchPause {
    * field clock (b.start `elapsed`, the boss budgets and overtime), the result deadline / server release timers, the
    * boss clock, the HUD `deadline` / `overtimeAt` (shifted by the pause on resume) and the server-run pacers
    * (FieldRunner / HeadlessPacer skip their intervals) — and the browser's runner stops its local clock while
-   * `m.public.paused` is true. Solo matches only (co-op battles never pause: WRONG_PHASE) and only while a battle runs;
-   * `{ on: false }` is always accepted. A disconnect / leave, or the battle phase ending, resumes.
+   * `m.public.paused` is true. Solo matches only (co-op battles never pause: WRONG_PHASE — a debug match's host may,
+   * 联防 too, DESIGN §27; anyone else there: NOT_HOST) and only while a battle runs; `{ on: false }` is always accepted
+   * (from the host). A disconnect / leave, or the battle phase ending, resumes.
    */
   setPause(ps, on) {
-    void ps;
-    if (!this.isSolo) return fail(ERR.WRONG_PHASE, 'co-op battles never pause');
+    if (!this.isSolo) {
+      // a debug match (DESIGN §27): its host pauses a co-op battle too — 联防 included
+      if (!this.debug) return fail(ERR.WRONG_PHASE, 'co-op battles never pause');
+      if (!this._isDebugHost(ps.playerId)) return fail(ERR.NOT_HOST, 'the host pauses a debug match');
+    }
     if (!on) { this._resume(); return OK; }
     if (this.paused) return OK;
-    const battlePhase = this.phase === PHASE.COMBAT || this.phase === PHASE.FINAL_ASSAULT || this.phase === PHASE.HIDDEN_CORE;
+    const battlePhase = this.phase === PHASE.COMBAT || this.phase === PHASE.FINAL_ASSAULT || this.phase === PHASE.HIDDEN_CORE
+      || (!!this.debug && this.phase === PHASE.UNITE);
     if (!battlePhase || this._finalEnding || !this.fields.some((f) => f.live && !f.done)) return fail(ERR.WRONG_PHASE, 'no battle running');
     this.paused = true;
     this._pausedAt = this.sched.now();

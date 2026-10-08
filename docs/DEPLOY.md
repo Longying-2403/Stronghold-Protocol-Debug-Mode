@@ -153,6 +153,8 @@ powershell -ExecutionPolicy Bypass -File scripts\install-service-windows.ps1 -Re
 
 ## 2. 让不在同一网络的朋友加入
 
+服务器默认允许任何玩家在大厅输入 `DBUG` 创建调试房间（测试用，[玩法指南 §12](PLAYING.md#12-调试模式)）；开放给不认识的人的服务器可以设置环境变量 `SP_DEBUG=0` 关闭它（README「端口与配置」）。
+
 ### 2.1 Tailscale / ZeroTier（推荐给家用小主机）
 
 组一个虚拟局域网：不需要公网 IP、不需要改路由器、不暴露到互联网。

@@ -7,7 +7,9 @@
 //   in a room              → Room
 //   otherwise              → Lobby
 // Deep link `?room=CODE`: remembered at boot, auto-joined once the player has entered and the
-// session is online (after a short grace period in case the server restores a room on resume).
+// session is online (after a short grace period in case the server restores a room on resume). A debug room asks the
+// player first (DESIGN §27, ui/debugMode.js joinWithAck); `?room=DBUG` opens a new one like the lobby's DBUG key, with the
+// lobby's last mode and difficulty. Every `welcome` says whether the server opens debug rooms (store ui.debugRooms).
 // Reloading a tab that already passed the title re-enters automatically (sessionStorage flag) and
 // resumes the server session with the saved token; stale room/match state is dropped if the
 // server does not re-push it within RESTORE_GRACE_MS after `welcome`. Boot waits for
@@ -37,7 +39,7 @@ import { html, UiHosts, Button, MicroLabel, closeAllDialogs } from './ui/compone
 import { ConnectionBanner } from './ui/connBanner.js';
 import { ToastHost, toast, toastError, describeError } from './ui/toasts.js';
 import { net, identity, NetError } from './net.js';
-import { store, useStore, emptyMatch, selectRoute, sessionResetNotice, isSpectating } from './store.js';
+import { store, useStore, emptyMatch, selectRoute, sessionResetNotice, isSpectating, loadPref } from './store.js';
 import { data } from './data.js';
 import { GAME_FILES } from './ui/gameComponents.js';
 import { TitleScreen, sanitizeName } from './screens/title.js';
@@ -50,6 +52,8 @@ import { GuideHost } from './ui/guide.js';
 import { installDeviceSupport } from './ui/device.js';
 import { LoadoutHost } from './screens/loadout.js';
 import { installLoadoutSync, installOwnershipSync, installDiySync } from './ui/loadoutSync.js';
+import { isDebugCode, enterDebugRoom, joinWithAck } from './ui/debugMode.js';
+import { DIFFICULTIES } from '../../shared/constants.js';
 import { startBuildGuard } from './ui/buildGuard.js';
 import { initLang, useLang, tickerText } from './ui/lang.js';
 import { t, N_, translateWire } from '../../shared/i18n.js';
@@ -105,7 +109,12 @@ function schedulePendingJoin() {
     }
     joinInFlight = true;
     try {
-      await net.request('room.join', { code });
+      if (isDebugCode(code)) {
+        const d = loadPref('lobby.difficulty', 'FUNNY');
+        await enterDebugRoom({ mode: loadPref('lobby.mode', 'coop') === 'solo' ? 'solo' : 'coop', difficulty: DIFFICULTIES.includes(d) ? d : 'FUNNY' });
+      } else {
+        await joinWithAck('room.join', code);
+      }
     } catch (err) {
       toastError(err);
     } finally {
@@ -146,6 +155,8 @@ function onWelcome(msg) {
   const prevId = prev.me.playerId;
   const name = typeof msg.name === 'string' && msg.name ? msg.name : prev.me.name;
   store.set({ me: { playerId: msg.playerId ?? null, name, token: typeof msg.token === 'string' ? msg.token : null } });
+  // debug rooms open on this server unless it says otherwise (SP_DEBUG=0, DESIGN §27)
+  store.patch('ui', { debugRooms: msg.debugRooms !== false });
   welcomeAt = Date.now();
 
   if (prevId != null && prevId !== msg.playerId) {

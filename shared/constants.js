@@ -20,6 +20,12 @@ export const MAX_SEATS = 4;
 export const MAX_SPECTATORS = 2;
 export const ROOM_CODE_LEN = 4;
 export const NAME_MAX_LEN = 12;
+/**
+ * The key that opens a debug room (DESIGN §27, a remake tool for testing — the official game has none): typed into
+ * 加入同盟, it creates a new debug room (room.create { debug: true }) instead of joining one. It is never given to a
+ * room (server/lobby.js genCode skips it); the debug room itself gets an ordinary key that teammates join with.
+ */
+export const DEBUG_ROOM_CODE = 'DBUG';
 
 export const DIFFICULTIES = ['FUNNY', 'NORMAL', 'HARD', 'ABYSS'];
 export const DIFFICULTY_NAMES = { FUNNY: N_('标准模拟'), NORMAL: N_('险境模拟'), HARD: N_('绝境模拟'), ABYSS: N_('终极模拟') };
@@ -147,6 +153,8 @@ export const ERR = Object.freeze({
   TEMP_NOT_EMPTY: 'TEMP_NOT_EMPTY',
   ELIMINATED: 'ELIMINATED',
   SPECTATOR: 'SPECTATOR',         // a spectator seat only watches (MAX_SPECTATORS)
+  DEBUG_OFF: 'DEBUG_OFF',         // this server does not open debug rooms (SP_DEBUG=0, DESIGN §27)
+  DEBUG_CONFIRM: 'DEBUG_CONFIRM', // entering a debug room needs the player's confirmation (`debugAck`, DESIGN §27)
   INTERNAL: 'INTERNAL',
 });
 
@@ -156,7 +164,8 @@ export const ERR_TEXT = {
   WRONG_PHASE: N_('当前阶段无法进行该操作'), NO_FUNDS: N_('资金不足'), HAND_FULL: N_('整备区已满'), BOARD_FULL: N_('已达到部署上限'),
   BAD_TILE: N_('无法部署在该位置'), BAD_TARGET: N_('无效的目标'), SOLD_OUT: N_('已售出'), MAX_LEVEL: N_('调度中心已达最高等级'),
   NOT_YOUR_TURN: N_('尚未轮到你'), ALREADY: N_('已完成该操作'), TEMP_NOT_EMPTY: N_('临时整备区不为空'), ELIMINATED: N_('你已被淘汰'),
-  SPECTATOR: N_('观战中无法进行该操作'), INTERNAL: N_('服务器内部错误'),
+  SPECTATOR: N_('观战中无法进行该操作'), DEBUG_OFF: N_('此服务器已关闭调试模式'),
+  DEBUG_CONFIRM: N_('这是调试模式房间，进入前需要确认'), INTERNAL: N_('服务器内部错误'),
 };
 
 // ---- Emotes (交流, research 09 §4) -----------------------------------------------------------------------------

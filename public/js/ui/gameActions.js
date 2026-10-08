@@ -70,6 +70,8 @@ export const actions = {
   // `playerId`: the player tapped in the team panel (a shared field shows two) — what an eliminated viewer follows
   watch: (fieldId, playerId = null) => act('g.watch', typeof playerId === 'string' && playerId ? { fieldId, playerId } : { fieldId }, { sfx: 'tab' }),
   autoplay: (on) => act('g.autoplay', { on }),
-  // solo battles only (ui/matchStatus.js pauseAvailable): m.public.paused follows
+  // solo battles only (ui/matchStatus.js pauseAvailable): m.public.paused follows — and a debug match's host (DESIGN §27)
   pause: (on) => act('g.pause', { on: !!on }, { sfx: on ? 'click' : 'confirm' }),
+  // a debug match's operation (DESIGN §27, shared/debug.js DEBUG_OPS; ui/debugPanel.js): `target` absent = oneself
+  debug: (op, fields = {}) => act('g.debug', { op, ...fields }, { sfx: 'click' }),
 };

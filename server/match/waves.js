@@ -15,6 +15,9 @@
 //     (entry.weight) special entry of the round's type and half whose SPECIAL key is not in the mode's
 //     inactiveEnemyKeys (attached keys are never filtered); normal / elite = a random attached key
 //   * boss: weighted mode.bossWeights; hidden boss: weighted mode.hiddenBossWeights (independent)
+//   * a debug room's overrides (DESIGN §27: battlefield, 特训敌人 types, leaders) replace what was drawn — every draw is
+//     still made, so a match without overrides (and every other random stream of a debug match) is unchanged; the
+//     15-round schedule is built from the chosen types
 // Per round (buildNormalWave / buildBossWave; one composition shared by every player):
 //   * every template SPAWN action whose key is a placeholder (N/E/S walk, NF/EF/SF fly) becomes the pick's
 //     normal / elite / special key — or is SKIPPED (not spawned, not previewed) when the new key's movement class differs
@@ -174,11 +177,14 @@ function scheduleRng(rng) {
 /**
  * @param {import('./gamedata.js').GameData} gd
  * @param {Function} rng
+ * @param {{ stageId?: string|null, factions?: string[]|null, bossId?: string|null, hiddenBossId?: string|null } | null} [overrides]
+ *   a debug room's choices (DESIGN §27; already checked against the mode by shared/debug.js normalizeDebugConfig) — null /
+ *   absent ones keep the draw
  * @returns {{ stageId: string|null, factions: string[], bossId: string|null, hiddenBossId: string|null, typeSlots: string[], picks: object[] }}
  *   `factions` also carries the schedule as a non-enumerable `schedule` property ({ typeSlots, picks }), so callers
  *   that keep only the factions array (Match: buildNormalWave(gd, rng, this.factions, r)) get the official rounds.
  */
-export function setupMatchWaves(gd, rng) {
+export function setupMatchWaves(gd, rng, overrides = null) {
   // stage
   const stageIds = Array.isArray(gd.mode.stages) ? gd.mode.stages : [];
   const stagePairs = stageIds.map((id) => [id, gd.stage(id)]).filter(([, s]) => s && s.active !== false && Number(s.weight) > 0).map(([id, s]) => [id, s.weight]);
@@ -193,13 +199,24 @@ export function setupMatchWaves(gd, rng) {
   const random = Object.values(types).filter((t) => t && t.involveRandom).map((t) => t.type).sort();
   const shuffled = random.slice();
   rng.shuffle(shuffled);
-  const chosen = shuffled.slice(0, Math.min(n, shuffled.length));
-  const factions = chosen.slice().sort((a, b) => (types[a]?.sortId ?? 9) - (types[b]?.sortId ?? 9));
+  let chosen = shuffled.slice(0, Math.min(n, shuffled.length));
   // bosses
   const bw = gd.bossWeights(false);
-  const bossId = bw.length ? weightedPick(rng, bw) : null;
+  let bossId = bw.length ? weightedPick(rng, bw) : null;
   const hw = gd.bossWeights(true);
-  const hiddenBossId = hw.length && gd.hiddenRound ? weightedPick(rng, hw) : null;
+  let hiddenBossId = hw.length && gd.hiddenRound ? weightedPick(rng, hw) : null;
+  // a debug room's choices replace the draws above (the draws were made: the streams below are unchanged)
+  const o = overrides && typeof overrides === 'object' ? overrides : null;
+  if (o) {
+    if (typeof o.stageId === 'string' && gd.stage(o.stageId)) stageId = o.stageId;
+    if (Array.isArray(o.factions) && o.factions.length) {
+      const known = o.factions.filter((t, i, a) => types[t] && a.indexOf(t) === i);
+      if (known.length) chosen = known;
+    }
+    if (typeof o.bossId === 'string' && gd.boss(o.bossId)) bossId = o.bossId;
+    if (typeof o.hiddenBossId === 'string' && gd.boss(o.hiddenBossId) && gd.hiddenRound) hiddenBossId = o.hiddenBossId;
+  }
+  const factions = chosen.slice().sort((a, b) => (types[a]?.sortId ?? 9) - (types[b]?.sortId ?? 9));
   // the 15-round schedule and picks (own rng stream derived from the setup rng's state: the draws above and whatever
   // the caller draws next from `rng` are unchanged)
   const srng = scheduleRng(rng);

@@ -3,7 +3,8 @@
 // the settings modal — which also holds the language switch (ui/lang.js; kept apart in `sp.pref.lang`; under it a note
 // while the current language's pack is a machine translation, `_meta.machineTranslated`) and the 快捷键
 // section that rebinds the in-match shortcuts (the key map: ui/gameLogic/shortcuts.js; the community request
-// 「快捷键可不可以自己设置」, the owner's decision of 2026-10-07).
+// 「快捷键可不可以自己设置」, the owner's decision of 2026-10-07) and the 调试模式 switch (DESIGN §27, ui/debugMode.js: kept
+// apart in `sp.pref.debugMode`; greyed out when the server does not open debug rooms).
 
 import { useLayoutEffect, useState } from '../../vendor/hooks.module.js';
 import { html, Modal, Button, Icon, MicroLabel } from './components.js';
@@ -13,6 +14,8 @@ import { audio } from '../audio.js';
 import { openGuide } from './guide.js';
 import { detectFeatures } from './device.js';
 import { LangToggle, machineTranslationNote } from './lang.js';
+import { useDebugEnabled, setDebugEnabled, serverDebugRooms } from './debugMode.js';
+import { DEBUG_ROOM_CODE } from '../../../shared/constants.js';
 import { t, tc, N_ } from '../../../shared/i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
@@ -51,12 +54,25 @@ function Slider({ label, micro, value, onInput, icon }) {
   </label>`;
 }
 
-function Toggle({ label, micro, value, onChange }) {
+function Toggle({ label, micro, value, onChange, disabled = false }) {
   return html`<div class="set-row">
     <span class="set-row__label">${label}<${MicroLabel}>${micro}<//></span>
     <button type="button" class=${`set-toggle${value ? ' is-on' : ''}`} role="switch" aria-checked=${value ? 'true' : 'false'}
-      onClick=${() => onChange(!value)}><i></i><span>${value ? tc('toggle', '开启') : tc('toggle', '关闭')}</span></button>
+      disabled=${disabled} onClick=${() => onChange(!value)}><i></i><span>${value ? tc('toggle', '开启') : tc('toggle', '关闭')}</span></button>
   </div>`;
+}
+
+/**
+ * 调试模式 (DESIGN §27): the switch that lets DBUG open a debug room from 加入同盟 (this browser only; joining a teammate's
+ * debug room needs no switch). A server that opens none (SP_DEBUG=0) greys it out and says so.
+ */
+function DebugToggle() {
+  const on = useDebugEnabled();
+  const allowed = useStore((s) => serverDebugRooms(s));
+  return html`<${Toggle} label=${t('调试模式')} micro="DEBUG MODE" value=${on && allowed} disabled=${!allowed} onChange=${setDebugEnabled} />
+    <p class="set-hint" data-testid="debug-mode-note">${allowed
+      ? t('开启后，在大厅「加入同盟」输入 {code} 可以创建调试房间，用于测试问题；调试房间里的对局不是正式模拟', { code: DEBUG_ROOM_CODE })
+      : t('此服务器已关闭调试模式')}</p>`;
 }
 
 const QUALITY = [['high', N_('高')], ['medium', N_('中')], ['low', N_('低')]];
@@ -175,6 +191,7 @@ export function SettingsModal({ open, onClose }) {
             class=${s.quality === id ? 'is-on' : ''} onClick=${() => updateSettings({ quality: id })}>${t(label)}</button>`)}
         </div>
       </div>
+      <${DebugToggle} />
       <${HotkeySection} keys=${s.keys} touchUi=${touchUi} />
       <p class="set-hint">${touchUi ? t('触屏操作：点击单位选中（撤退 / 出售）· 长按单位或卡牌查看详情 · 拖动部署后滑动选择朝向') : t('右键查看详情')}</p>
     </div>

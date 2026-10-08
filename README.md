@@ -57,6 +57,7 @@ English summary: [below](#english).
 - **交互细节**：漏怪时顶栏的目标生命值实时减少（结算时确定）；点选、拖放和配发装备都按地上的方格；购买、升级和机变选卡都需要点两次确认；只有一名玩家时除作战外不计时。
 - **画面与声音**：真实 Spine 小人、官方 BGM 与音效、表情（6 套 × 6 个）、作战特效；可选的官方 3D 棋盘（需要从本机客户端提取贴图）。
 - **手机与电脑**：触摸拖拽、长按查看详情，推荐横屏；设置里可以调低画质。
+- **调试模式**（测试用，本作新增）：在大厅输入 `DBUG` 创建调试房间，开局前指定战场、领袖、禁用盟约、特训敌人和起始状态，局内修改资金、调度中心等级、生命值和盟约层数，控制作战速度，直接取用干员和道具，方便快速复现问题（[玩法指南 §12](docs/PLAYING.md#12-调试模式)）。
 
 ## 快速开始
 
@@ -118,6 +119,7 @@ npm start          # 启动服务器：http://localhost:3000
 | `SP_VERIFY` | `off` | 服务器复算客户端上报的战斗结果：`off` / `sample`（约 1/8 抽查）/ `all`（全部复算，更耗 CPU） |
 | `TRUST_PROXY` | `auto` | 是否信任 `X-Forwarded-For` 等转发头：`auto` 只信任来自本机 / 内网的代理；`1` 总是；`0` 从不 |
 | `DEBUG` | 空 | 设为任意值输出详细日志 |
+| `SP_DEBUG` | `1` | 是否允许创建调试房间（大厅输入 `DBUG`，[玩法指南 §12](docs/PLAYING.md#12-调试模式)）：设为 `0` 关闭，公开服务器可以关掉 |
 | `SP_NO_BROWSER` | 空 | 设为 `1` 时启动脚本不自动打开浏览器 |
 
 设置方式：macOS / Linux `PORT=8080 npm start`；PowerShell `$env:PORT=8080; npm start`；cmd `set "PORT=8080" && npm start`。健康检查：`GET /healthz`。
@@ -163,6 +165,7 @@ npm start          # 启动服务器：http://localhost:3000
 | 暂停（独立模拟） | 作战中（含最终攻势 / 隐秘核心）点顶栏的「暂停」或按 `Space`，再点「继续作战」（或 `Space`）继续；同盟模拟的作战不能暂停 |
 | 表情 | 左下角「交流」，左右滑动（或方向键）换主题，冷却 1 秒 |
 | 观战 | 自己的作战结束后（或休整期）点左侧队友头像 →「前往查看」；不参战的朋友可以在大厅输入同盟密钥点「观战」（每个同盟最多 2 名观战者，本作新增） |
+| 调试模式（测试用） | 在「设置」里打开「调试模式」，然后在大厅「加入同盟」输入 `DBUG`，确认后创建调试房间；局内点左下角「DBG」打开调试面板（[玩法指南 §12](docs/PLAYING.md#12-调试模式)，本作新增，不是正式模拟） |
 
 完整的规则、数值和小技巧见 **[docs/PLAYING.md](docs/PLAYING.md)**（游戏内左下角也有「玩法说明」）。
 
@@ -250,5 +253,6 @@ An **unofficial, non-commercial fan remake** of Arknights' seasonal auto-chess t
 - **Languages:** Chinese (the default), English, 日本語, 한국어 and 繁體中文 — switch on the title screen or in Settings. Game texts come from the official clients; the Japanese, Korean and Traditional Chinese interface strings are machine translations (corrections welcome: [docs/I18N.md](docs/I18N.md)).
 - **Play with friends:** create a co-op room and share the 4-letter key or the `?room=KEY` link. On a LAN, use the address printed at start; otherwise use a virtual-LAN tool, a tunnel or a VPS — see [docs/DEPLOY.md](docs/DEPLOY.md).
 - **Disclaimer:** not affiliated with or endorsed by Hypergryph or Yostar. All Arknights names, art, audio, text and data are © their respective owners and are **not** covered by this project's GPL licence. For study and personal non-commercial use only — no selling, paid distribution, paid servers or monetisation of any kind. Content will be removed on request of the rights holders. Provided "as is", without warranty.
+- **Debug rooms (a testing tool of this remake):** turn on 调试模式 / Debug Mode in Settings, type `DBUG` into Join Alliance and confirm — the room sets the battlefield, leaders, disabled Alliances, enemy types and the starting state; in the match the DBG button changes Funds, the Dispatch Center level, LP and stacks, the battle speed (1× / 2× / 4×), and takes any Operator or Item. A server started with `SP_DEBUG=0` opens none.
 - **License:** code GPL-3.0-or-later ([LICENSE](LICENSE)); game assets excluded.
 - **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) (an English summary at its end); the code map is [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

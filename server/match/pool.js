@@ -26,14 +26,26 @@
  */
 export function drawDisabledBonds(gd, rng) {
   const { core: nCore, addon: nAddon } = gd.bans(gd.difficulty);
-  const staticOff = [...gd.modeInactiveBonds].filter((b) => gd.bond(b)).sort();
   const eligible = gd.bondIds.filter((b) => {
     const bond = gd.bond(b);
     return bond && Number(bond.weight) > 0 && !gd.modeInactiveBonds.has(b);
   });
   const core = eligible.filter((b) => gd.bond(b).isCore);
   const addon = eligible.filter((b) => !gd.bond(b).isCore);
-  const drawn = [...sample(core, nCore, rng), ...sample(addon, nAddon, rng)].sort();
+  return bansFor(gd, [...sample(core, nCore, rng), ...sample(addon, nAddon, rng)]);
+}
+
+/**
+ * The bans of a given disabled set D (drawDisabledBonds' draw, or a debug room's own list — DESIGN §27, already checked
+ * against the mode's eligible bonds): D sorted, the mode's static inactive bonds, and the visible chess banned by D ∪
+ * them (every one of their bonds off).
+ * @param {import('./gamedata.js').GameData} gd
+ * @param {Iterable<string>} disabled
+ * @returns {{ drawn: string[], staticOff: string[], banned: string[] }}
+ */
+export function bansFor(gd, disabled) {
+  const staticOff = [...gd.modeInactiveBonds].filter((b) => gd.bond(b)).sort();
+  const drawn = [...new Set(disabled)].filter((b) => gd.bond(b)).sort();
   const off = new Set([...drawn, ...staticOff]);
   const banned = [];
   for (const id of gd.visibleChess) {

@@ -33,7 +33,8 @@
 // again when the session is back online ('status' → 'online') or when a b.start still names this finished battle
 // authoritative (the server is waiting for it); the server takes a duplicate idempotently. A server refusal is final.
 // Solo pause (g.pause, DESIGN §14): while `m.public.paused` is true every local battle clock stands still (no ticks, no
-// reports); on resume the clocks move on by the paused time, like the server's field clock.
+// reports); on resume the clocks move on by the paused time, like the server's field clock. A debug match's speed
+// (m.public.debug.speed, DESIGN §27) rebases every local battle's clock to the new speed.
 // Live leaks (user playtest #3 item 2): every normal field simulated here keeps its counted leaks so far — the settle
 // rule's count (leaked entries with counted !== false, /sim/spec.js battleProgress) — and publishes them as
 // state().leaks { [fieldId]: n } whenever one changes, authoritative or display replica alike; the top bar shows the
@@ -518,6 +519,24 @@ export function createBattleRunner(deps) {
     schedule();
   }
 
+  /**
+   * A debug match's battle speed (m.public.debug.speed, DESIGN §27): every local battle goes on at the new speed from
+   * where it is — its clock origin is rebased, so its game time does not jump (the server rebased its field clocks).
+   */
+  function setSpeed(v) {
+    const speed = Number(v);
+    if (!(speed > 0)) return;
+    const t = clock();
+    let changed = false;
+    for (const e of [...entries.values(), ...pending.values()]) {
+      if (e.speed === speed) continue;
+      if (e.t0 != null) e.t0 = t - ((t - e.t0) * e.speed) / speed;
+      e.speed = speed;
+      changed = true;
+    }
+    if (changed) { publishState(); schedule(); }
+  }
+
   /** Advance one entry to its clock (bounded); render it when it is on screen. */
   function advance(e, t, render) {
     if (e.battle.finished) { if (!e.done) finished(e); return; }
@@ -784,6 +803,8 @@ export function createBattleRunner(deps) {
       const pub = s && s.match && s.match.public ? s.match.public : null;
       // solo pause (DESIGN §14): the local battle clocks follow m.public.paused
       setPaused(!!(pub && pub.paused));
+      // a debug match's speed (DESIGN §27): the local battles follow m.public.debug.speed
+      if (pub && pub.debug) setSpeed(pub.debug.speed);
       const phase = pub ? pub.phase : null;
       if (phase === lastPhase) return;
       lastPhase = phase;

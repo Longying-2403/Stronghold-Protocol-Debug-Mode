@@ -4,6 +4,7 @@
 import { DIFFICULTIES, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_SEATS, EMOTES, GEO } from './constants.js';
 import { isDroppableChess } from './standIn.js';
 import { diySlotIds, validateDiyPicks } from './diy.js';
+import { isDebugConfigWire, isDebugOp, END_MODES } from './debug.js';
 
 // ---- tiny validators -------------------------------------------------------
 const isInt = (v, lo = -Infinity, hi = Infinity) => Number.isInteger(v) && v >= lo && v <= hi;
@@ -320,8 +321,11 @@ export const C2S = {
   // session & lobby
   hello: { name: (v) => isStr(v, NAME_MAX_LEN) && v.trim().length > 0, token: (v) => v == null || isStr(v, 64), version: (v) => v == null || isInt(v, 0, 1e6), $optional: ['token', 'version'] },
   ping: { c: (v) => typeof v === 'number' && Number.isFinite(v) },
-  'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v) },
-  'room.join': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
+  // debug: a debug room (DESIGN §27; the client sends it after the player typed DBUG and confirmed) — DEBUG_OFF when the
+  // server does not open them (SP_DEBUG=0)
+  'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v), debug: isBool, $optional: ['debug'] },
+  // debugAck: the player confirmed entering a debug room (DESIGN §27) — without it a debug room answers DEBUG_CONFIRM
+  'room.join': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v), debugAck: isBool, $optional: ['debugAck'] },
   'room.leave': {},
   'room.ready': { ready: isBool },
   'room.setDifficulty': { difficulty: (v) => DIFFICULTIES.includes(v) },
@@ -342,8 +346,11 @@ export const C2S = {
   // spectator seats (remake feature, community report #26; MAX_SPECTATORS): take one of a co-op room's spectator seats —
   // in its lobby or while its match runs — never a player seat; the host frees one by playerId (the spectator gets
   // room.closed { reason: 'kicked' }). room.leave / g.leave leave a spectator seat like a player seat.
-  'room.spectate': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
+  'room.spectate': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v), debugAck: isBool, $optional: ['debugAck'] },
   'room.removeSpectator': { playerId: isId },
+  // debug rooms (DESIGN §27): the host's pre-game settings (shared/debug.js; checked leniently against the game data,
+  // like room.ownership) — in the lobby only, never while the match runs
+  'room.debugConfig': { config: isDebugConfigWire },
 
   // match
   'g.infoReady': {},
@@ -378,6 +385,12 @@ export const C2S = {
   // the stats the own board's units start their next battle with (user playtest #4 item 7; prep phases): answered by
   // the push m.unitStats { seq, round, units: [unitStatsEntry] }; `seq` is echoed so the client keeps the newest answer
   'g.unitStats': { seq: (v) => isInt(v, 0, 2 ** 31), $optional: ['seq'] },
+  // debug rooms (DESIGN §27): one in-match operation (shared/debug.js DEBUG_OPS / checkDebugOp — the fields each one
+  // needs); any other match answers BAD_MSG
+  'g.debug': {
+    op: isDebugOp, target: nullable(isId), id: nullable(isId), value: (v) => isInt(v, -1e6, 1e6), on: isBool,
+    mode: (v) => END_MODES.includes(v), $optional: ['target', 'id', 'value', 'on', 'mode'],
+  },
   'g.leave': {},
 
   // client-side combat (DESIGN §14): the authoritative client of a field reports its battle; a 联防 field adds

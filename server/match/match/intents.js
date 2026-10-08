@@ -40,6 +40,8 @@ export class MatchIntents {
       case 'g.pause': return this.setPause(ps, !!msg.on);
       // the stats the board's units start their next battle with (the detail card in prep, user playtest #4 item 7)
       case 'g.unitStats': return this.unitStats(ps, msg.seq ?? null);
+      // a debug match's operations (DESIGN §27, ./debug.js); any other match: BAD_MSG
+      case 'g.debug': return this.debugOp(ps, msg);
       case 'g.leave': this.onLeave(ps.playerId); return OK;
       case 'b.progress': return this._onProgress(ps, msg);
       case 'b.result': return this._onResult(ps, msg);

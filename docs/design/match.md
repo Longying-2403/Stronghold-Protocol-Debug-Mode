@@ -33,6 +33,7 @@ LOBBY(room) → INFO_CHECK (co-op 25 s; solo and any single-human match untimed 
 → RESULT (per-player stats, titles, rounds passed, victory/defeat)
 ```
 Solo FUNNY has 9 rounds (boss at R9); everything is read from `data/config.json → modes[modeId]`.
+A debug room's match (§27, a remake tool for testing) may preset strategies, start at a later round with its own funds, level and LP, and lets its host end a battle phase or jump from a prep to another round; an ordinary match never does.
 
 ### 6.2 Player state (PlayerState.js) — authoritative per player
 

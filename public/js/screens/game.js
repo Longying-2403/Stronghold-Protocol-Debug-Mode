@@ -63,6 +63,9 @@
 // player — no shop, no ready, no emotes (▸ [ASSUMED] off), the server auto-observes the first field of every battle, a
 // team row → 前往查看 any player; in 休整期 / 机变 / round start it is shown the first player's board by itself (once per
 // phase). Its pill reads 观战中, never "你已被淘汰"; its exit only leaves the seat (ui/matchChrome.js ExitModal).
+// A debug match (DESIGN §27, m.public.debug): the top bar carries the DEBUG mark, the corner a DBG button that opens the
+// debug panel (ui/debugPanel.js) above everything but dialogs (the pause overlay included), and the room's host may pause
+// a co-op battle and resume it from the paused overlay.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { PHASE, GEO } from '../../../shared/constants.js';
@@ -90,6 +93,7 @@ import { Underframe, underframeRect, TempRowNotice } from '../ui/underframe.js';
 import { StandInTags } from './game/standInTags.js';
 import { needsFacing, facingIntent, previewGrid, pieceDir, underframeActions, retreatSlot, itemDestroyable } from '../ui/facing.js';
 import { EquipReplaceDialog, replaceRequest, replaceIntent } from '../ui/equipReplace.js';
+import { DebugPanel } from '../ui/debugPanel.js';
 import { pauseAvailable, isPaused, frozenNow } from '../ui/matchStatus.js';
 import { pieceTile } from '../render/drag.js';
 import {
@@ -155,6 +159,8 @@ function MatchScreen() {
   const conn = useStore((s) => s.connection, shallowEqual);
   const emotes = useStore((s) => s.emotes);
   const roomSolo = useStore((s) => s.room?.mode === 'solo');
+  // a debug match (DESIGN §27): the room's host may use the host operations and pause a co-op battle
+  const roomHost = useStore((s) => s.room?.hostId != null && s.room.hostId === s.me.playerId);
   const spectator = useStore((s) => isSpectating(s.room, s.me.playerId));
   const gd = useGameData();
 
@@ -173,6 +179,7 @@ function MatchScreen() {
   const [rewardMin, setRewardMin] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
   const [drag, setDrag] = useState(null);                // { uid, kind, id } while dragging a piece
   const [facing, setFacing] = useState(null);            // direction step: { uid, piece, row, col, grid, name }
@@ -1210,7 +1217,8 @@ function MatchScreen() {
   const myDone = combat && (cc ? phase === PHASE.COMBAT && (meP?.status === 'done' || localDone) : meP?.status === 'done');
   live.current.localDone = localDone;
   // the solo pause button: only while the own battle still runs (the server refuses it afterwards)
-  const canPause = pauseAvailable(pub, { solo, alive, done: meP?.status === 'done' || localDone });
+  const debugHost = !!pub?.debug && roomHost;
+  const canPause = pauseAvailable(pub, { solo: solo || debugHost, alive, done: meP?.status === 'done' || localDone });
   live.current.canPause = canPause;
   // client-side combat: observing a teammate's battle (research 09 §3.1) and the 联防 / 最终攻势 camera halves
   // (an eliminated player auto-observes a teammate's normal field — research 09 "keep-watching" — without asking)
@@ -1376,6 +1384,8 @@ function MatchScreen() {
 
       <div class="gm__corner">
         ${spectator ? null : html`<${EmoteWheel} open=${emoteOpen} onToggle=${setEmoteOpen} onSend=${(id) => actions.emote(id)} disabled=${conn.status !== 'online'} />`}
+        ${pub?.debug ? html`<button type="button" class=${cx('gm__gear', 'gm__debug', debugOpen && 'is-on')} aria-label=${t('调试面板')} title=${t('调试面板')}
+          aria-expanded=${debugOpen ? 'true' : 'false'} data-testid="debug-toggle" onClick=${() => setDebugOpen((o) => !o)}>DBG</button>` : null}
         <button type="button" class="gm__gear" aria-label=${t('设置')} title=${t('设置')} onClick=${() => setSettingsOpen(true)}><${GIcon} name="gear" /></button>
         <button type="button" class="gm__gear gm__guide" aria-label=${t('玩法说明')} title=${t('玩法说明')} onClick=${() => openGuide(0)}><${Icon} name="book" /></button>
         <${FullscreenButton} class="gm__gear gm__fs" />
@@ -1412,7 +1422,9 @@ function MatchScreen() {
     ${facing && view ? html`<${FacingWheel} key=${`${facing.uid}:${facing.row},${facing.col}`} view=${view} row=${facing.row} col=${facing.col}
       grid=${facing.grid} name=${facing.name} onPreview=${previewFacing} onCommit=${commitFacing} onCancel=${cancelFacing} />` : null}
 
-    ${paused ? html`<${PausedOverlay} canResume=${solo} busy=${pauseBusy} onResume=${() => togglePause(false)} onExit=${() => setExitOpen(true)} />` : null}
+    ${paused ? html`<${PausedOverlay} canResume=${solo || debugHost} busy=${pauseBusy} onResume=${() => togglePause(false)} onExit=${() => setExitOpen(true)} />` : null}
+
+    ${pub?.debug && debugOpen ? html`<${DebugPanel} pub=${pub} priv=${priv} myId=${myId} isHost=${roomHost} gd=${gd} onClose=${() => setDebugOpen(false)} />` : null}
 
     ${replace ? html`<${EquipReplaceDialog} request=${replace.request} getItem=${gd.item}
       onConfirm=${(uid) => closeReplace(uid)} onCancel=${() => closeReplace(null)} />` : null}

@@ -36,6 +36,8 @@ function randomIntent(rng, m, ps) {
     case 'g.watch': return { t, fieldId: rng.pick(['n:p_0', 'n:p_1', 'n:ai_0', 'u', 'b1', 'b2', 'zz', '']) };
     case 'g.autoplay': return { t, on: rng() < 0.05 };
     case 'g.pause': return { t, on: rng() < 0.5 };
+    // a debug match's operations (DESIGN §27): valid-shaped, refused by these ordinary matches (BAD_MSG)
+    case 'g.debug': return rng() < 0.5 ? { t, op: 'funds.add', value: rng.int(21) - 10 } : { t, op: 'battle.end', mode: rng.pick(['natural', 'leak', 'kill', 'win', 'lose']) };
     default: return { t };
   }
 }
@@ -62,6 +64,7 @@ function fuzzOne(seed, { fake }) {
       intents++;
       assert.ok(res && (res.ok === true || (typeof res.error === 'string' && Object.hasOwn(ERR, res.error))), `bad reply ${JSON.stringify(res)} to ${JSON.stringify(msg)}`);
       assert.notEqual(res.error, ERR.INTERNAL, `internal error on ${JSON.stringify(msg)}`);
+      if (msg.t === 'g.debug' && !ps.left) assert.equal(res.error, ERR.BAD_MSG, 'not a debug match');
     } else if (r < 0.85) {
       m.onDisconnect(pid);
     } else if (r < 0.88) {

@@ -93,10 +93,22 @@
 //     time → room.closed {kicked} to it. A spectator in a LOBBY room may take a free player seat with room.join of the same
 //     code; a player never switches to spectating in place (ALREADY). Disconnect / grace / reconnect / expiry work as for
 //     a player seat (the seat is kept and given back on resume).
+//   * Debug rooms (DESIGN §27, a remake tool for testing; the official game has none): room.create { debug: true } opens one
+//     (the client sends it when a player typed DEBUG_ROOM_CODE 'DBUG' into 加入同盟 and confirmed) — DEBUG_OFF when the
+//     server was started with SP_DEBUG=0 (option `debugRooms`; every `welcome` says `debugRooms`). DBUG itself is never a
+//     room's key (genCode skips it): the room gets an ordinary key, and whoever joins or spectates it with room.join /
+//     room.spectate must send `debugAck: true` (the client asks the player first) — else DEBUG_CONFIRM. A member already
+//     in the room (a spectator taking a seat) needs no new confirmation. The host's room.debugConfig { config } sets the
+//     pre-game settings (shared/debug.js normalizeDebugConfig, lenient, against the room's mode): in LOBBY only
+//     (ROOM_STARTED during the match), not a debug room → BAD_MSG, not the host → NOT_HOST; a change un-readies the
+//     other humans like a difficulty change, and a difficulty change re-checks the settings against the new mode.
+//     room.state carries `debug: true` and `debugConfig`; the match gets `debug` (the settings: its seed when one is set)
+//     and `hostId()` (the room's current host — the rights of the in-match operations, server/match/match/debug.js).
 
 import { randomBytes, randomInt } from 'node:crypto';
-import { ERR, MAX_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN, modeIdFor } from '../shared/constants.js';
+import { ERR, MAX_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN, DEBUG_ROOM_CODE, modeIdFor } from '../shared/constants.js';
 import { checkLoadout, checkNotOwned, checkDiyPicks } from '../shared/protocol.js';
+import { debugOptions, defaultDebugConfig, normalizeDebugConfig } from '../shared/debug.js';
 import { encode, isDroppable, isErrCode, sendRaw, sendSession } from './net.js';
 import { getData as defaultGetData, lookup } from './data.js';
 import { Match as DefaultMatch } from './match/Match.js';
@@ -113,6 +125,7 @@ export const LOBBY_DEFAULTS = Object.freeze({
   maxMatchesPerAddr: 8,   // matches started from one client network that may run at once (0 = unlimited)
   resyncMinGapMs: 1000,   // heavy resyncs (match state / result replay) per session at most this often on repeated hellos
   soloReconnectWindowMs: null, // a dropped solo run stays resumable this long (null = data singleReconnectTime, 24 h)
+  debugRooms: true,       // room.create { debug: true } opens a debug room (DESIGN §27; env SP_DEBUG=0 → false)
 });
 
 /** Official `singleReconnectTime` (s) when the data lacks it (constData, research 01 §1). */
@@ -146,6 +159,15 @@ function freezeDiy(picks) {
   return Object.freeze(out);
 }
 
+/** Deep-frozen plain data (a debug room's settings: shared by room.state and the match). */
+function deepFreeze(v) {
+  if (v && typeof v === 'object') {
+    for (const k of Object.keys(v)) deepFreeze(v[k]);
+    Object.freeze(v);
+  }
+  return v;
+}
+
 /** One room: 4 seat slots, host, difficulty, optional running match. */
 export class Room {
   /** @param {string} code @param {'solo'|'coop'} mode @param {string} difficulty @param {number} now */
@@ -177,6 +199,10 @@ export class Room {
     this.matchKey = null;
     this.createdAt = now;
     this.disposed = false;
+    /** a debug room (DESIGN §27, header): its pre-game settings (shared/debug.js), null for an ordinary room */
+    this.debug = false;
+    /** @type {ReturnType<typeof defaultDebugConfig> | null} */
+    this.debugConfig = null;
   }
 
   /** @param {string} playerId @returns {Seat | null} */
@@ -207,6 +233,8 @@ export class Room {
         ? { seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot, ready: s.ready, connected: s.connected && !s.left }
         : null)),
       spectators: this.spectators.map((s) => ({ playerId: s.playerId, name: s.name, connected: s.connected })),
+      // a debug room (DESIGN §27): the flag and the host's pre-game settings (absent for an ordinary room)
+      ...(this.debug ? { debug: true, debugConfig: this.debugConfig } : {}),
     };
   }
 }
@@ -320,6 +348,7 @@ export class Lobby {
       case 'room.diy': return this.diy(session, msg);
       case 'room.spectate': return this.spectate(session, msg);
       case 'room.removeSpectator': return this.removeSpectator(session, msg);
+      case 'room.debugConfig': return this.setDebugConfig(session, msg);
       default:
         if (typeof msg.t === 'string' && msg.t.startsWith('g.')) return this.routeGame(session, msg);
         return fail(ERR.BAD_MSG, `unhandled type ${String(msg.t).slice(0, 32)}`);
@@ -368,9 +397,10 @@ export class Lobby {
   // room.* handlers
   // ---------------------------------------------------------------------------------------------------
 
-  create(session, { mode, difficulty }) {
+  create(session, { mode, difficulty, debug = false }) {
     const cur = this.roomOf(session);
     if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
+    if (debug && !this.opts.debugRooms) return fail(ERR.DEBUG_OFF, 'debug rooms are switched off on this server');
     if (this.rooms.size >= this.opts.maxRooms) return fail(ERR.INTERNAL, 'too many rooms');
     const key = session.limitKey || null;
     if (key && this.opts.maxRoomsPerAddr > 0) {
@@ -386,24 +416,30 @@ export class Lobby {
     if (cur) this.removeMember(cur, session.playerId);
     const room = new Room(code, mode, difficulty, this.now());
     room.ownerKey = key;
+    if (debug) {
+      room.debug = true;
+      room.debugConfig = this.normalizeDebug(room, defaultDebugConfig());
+    }
     room.seats[0] = this.humanSeat(0, session);
     room.hostId = session.playerId;
     this.rooms.set(code, room);
     session.roomCode = code;
     session.notice = null;
     session.pendingResult = null;
-    this.log.info(`[lobby] ${code} created (${mode}/${difficulty}) by ${session.name}`);
+    this.log.info(`[lobby] ${code} created (${mode}/${difficulty}${debug ? ', debug' : ''}) by ${session.name}`);
     this.broadcastState(room);
     return OK;
   }
 
-  join(session, { code }) {
+  join(session, { code, debugAck = false }) {
     const norm = String(code).trim().toUpperCase();
     const room = norm.length === ROOM_CODE_LEN ? this.rooms.get(norm) : undefined;
-    if (!room) return fail(ERR.ROOM_NOT_FOUND);
+    if (!room) return fail(ERR.ROOM_NOT_FOUND, norm === DEBUG_ROOM_CODE ? 'DBUG opens a debug room (room.create debug)' : undefined);
     const cur = this.roomOf(session);
     // idempotent for members; a spectator of this room goes on below: it may take a free player seat (header)
     if (cur === room && !room.spectatorOf(session.playerId)) { this.sendState(room, session); return OK; }
+    // a debug room is entered only after the player confirmed it (header); its own spectators already did
+    if (room.debug && !debugAck && cur !== room) return fail(ERR.DEBUG_CONFIRM, 'a debug room: confirm with debugAck');
     if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
     if (room.match) return fail(ERR.ROOM_STARTED);
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo room');
@@ -430,7 +466,7 @@ export class Lobby {
    * room.spectate: one of a co-op room's MAX_SPECTATORS spectator seats, in its lobby or during its match (header). In a
    * running match the match registers the spectator and resends what it may see (Match.addSpectator).
    */
-  spectate(session, { code }) {
+  spectate(session, { code, debugAck = false }) {
     const norm = String(code).trim().toUpperCase();
     const room = norm.length === ROOM_CODE_LEN ? this.rooms.get(norm) : undefined;
     if (!room) return fail(ERR.ROOM_NOT_FOUND);
@@ -440,6 +476,7 @@ export class Lobby {
       this.sendState(room, session);
       return OK;
     }
+    if (room.debug && !debugAck) return fail(ERR.DEBUG_CONFIRM, 'a debug room: confirm with debugAck');
     if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo room');
     if (room.spectators.length >= MAX_SPECTATORS) return fail(ERR.ROOM_FULL, 'no free spectator seat');
@@ -493,10 +530,39 @@ export class Lobby {
     this.dropReplay(room, session.playerId);
     if (room.difficulty !== difficulty) {
       room.difficulty = difficulty;
+      // a debug room's settings are checked against the new mode (its rounds, leaders, bonds — header)
+      if (room.debug) room.debugConfig = this.normalizeDebug(room, room.debugConfig);
       for (const s of room.seats) if (s && !s.isBot && s.playerId !== room.hostId) s.ready = false;
       this.broadcastState(room);
     }
     return OK;
+  }
+
+  /**
+   * room.debugConfig { config } (DESIGN §27, header): the host's pre-game settings of a debug room, checked leniently
+   * against the room's mode; a change un-readies the other humans.
+   */
+  setDebugConfig(session, { config }) {
+    const room = this.roomOf(session);
+    if (!room) return fail(ERR.NOT_IN_ROOM);
+    if (!room.debug) return fail(ERR.BAD_MSG, 'not a debug room');
+    if (room.spectatorOf(session.playerId)) return fail(ERR.SPECTATOR);
+    if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
+    if (room.match) return fail(ERR.ROOM_STARTED);
+    this.dropReplay(room, session.playerId);
+    const next = this.normalizeDebug(room, config);
+    if (JSON.stringify(next) !== JSON.stringify(room.debugConfig)) {
+      room.debugConfig = next;
+      for (const s of room.seats) if (s && !s.isBot && s.playerId !== room.hostId) s.ready = false;
+      this.broadcastState(room);
+    }
+    return OK;
+  }
+
+  /** A debug room's settings checked against its mode (shared/debug.js; frozen: shared with room.state and the match). */
+  normalizeDebug(room, config) {
+    const opt = debugOptions(this.safeData(), modeIdFor(room.mode, room.difficulty));
+    return deepFreeze(normalizeDebugConfig(config, opt));
   }
 
   addBot(session) {
@@ -640,9 +706,12 @@ export class Lobby {
     return OK;
   }
 
-  /** Extra fields of every `welcome` (net.js): the operators a 自选 slot may field (shared/diy.js `kitted`). */
+  /**
+   * Extra fields of every `welcome` (net.js): the operators a 自选 slot may field (shared/diy.js `kitted`) and whether
+   * this server opens debug rooms (DESIGN §27, `debugRooms`).
+   */
   welcomeInfo() {
-    return { diyKitted: KITTED_CHARS };
+    return { diyKitted: KITTED_CHARS, debugRooms: !!this.opts.debugRooms };
   }
 
   // ---------------------------------------------------------------------------------------------------
@@ -666,6 +735,8 @@ export class Lobby {
     const ctx = { live: true, ended: false, disposed: false, match: null, lastPublic: null, sharedResult: null, results: new Map() };
     let seed = 0;
     try { seed = this.seedFn() >>> 0; } catch { seed = randomInt(2 ** 32); }
+    // a debug room's fixed seed (DESIGN §27): the same battlefield, leaders, bans, enemies and rolls every time
+    if (room.debug && room.debugConfig && Number.isInteger(room.debugConfig.seed)) seed = room.debugConfig.seed >>> 0;
     try {
       const match = new this.MatchClass({
         roomCode: room.code,
@@ -684,6 +755,8 @@ export class Lobby {
         send: (playerId, msg) => (ctx.live ? this.matchSend(room, ctx, playerId, msg) : false),
         broadcast: (msg) => { if (ctx.live) this.matchBroadcast(room, ctx, msg); },
         onEnd: (summary) => this.onMatchEnd(room, ctx, summary),
+        // a debug room (DESIGN §27): its settings, and who hosts the room now (the rights of the debug operations)
+        ...(room.debug ? { debug: room.debugConfig, hostId: () => room.hostId } : {}),
       });
       ctx.match = match;
       room.match = match;
@@ -691,7 +764,7 @@ export class Lobby {
       room.matchKey = key;
       room.replay = null;
       room.matchCount++;
-      this.log.info(`[lobby] ${room.code} match #${room.matchCount} starting (${room.mode}/${room.difficulty}, ${seats.length} seats, seed ${seed})`);
+      this.log.info(`[lobby] ${room.code} match #${room.matchCount} starting (${room.mode}/${room.difficulty}${room.debug ? ', debug' : ''}, ${seats.length} seats, seed ${seed})`);
       this.broadcastState(room);
       match.start();
     } catch (e) {
@@ -1038,7 +1111,8 @@ export class Lobby {
     for (let attempt = 0; attempt < 1000; attempt++) {
       let code = '';
       for (let i = 0; i < ROOM_CODE_LEN; i++) code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
-      if (!this.rooms.has(code)) return code;
+      // DBUG opens a debug room (DESIGN §27): never a room's own key
+      if (code !== DEBUG_ROOM_CODE && !this.rooms.has(code)) return code;
     }
     return null;
   }

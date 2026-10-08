@@ -4,6 +4,8 @@
 //   * TRUST_PROXY ('auto' default: honour CF-Connecting-IP / X-Real-IP / X-Forwarded-For only from loopback/private
 //     peers such as a local cloudflared; '1' always; '0' never) → net.js trustProxy;
 //   * DEBUG → the console logger's debug level;
+//   * SP_DEBUG ('0' / 'false' / 'off' / 'no' → off; anything else, or unset, on) → lobby.js debugRooms: whether the
+//     server opens debug rooms (DESIGN §27; the startServer() option `debugRooms` wins);
 //   * the served directories (public/, data/, shared/ and the content packs' packs/ of this repository unless the
 //     options name others), and which startServer() options are handed on to net.js Network and lobby.js Lobby.
 
@@ -18,7 +20,7 @@ export const noopLog = { info() {}, warn() {}, error() {}, debug() {} };
 /** startServer() options handed on to net.js Network / lobby.js Lobby (an absent one keeps that module's default). */
 const NET_OPTION_KEYS = ['reconnectWindowMs', 'heartbeatMs', 'helloTimeoutMs', 'ratePerSec', 'rateBurst', 'maxConnections', 'abuseDropsPerSec',
   'maxConnectionsPerAddr', 'heavyPerSec', 'heavyBurst', 'trustProxy'];
-const LOBBY_OPTION_KEYS = ['lobbyGraceMs', 'maxRooms', 'maxRoomsPerAddr', 'maxMatchesPerAddr', 'resyncMinGapMs', 'soloReconnectWindowMs'];
+const LOBBY_OPTION_KEYS = ['lobbyGraceMs', 'maxRooms', 'maxRoomsPerAddr', 'maxMatchesPerAddr', 'resyncMinGapMs', 'soloReconnectWindowMs', 'debugRooms'];
 
 /**
  * Where to listen: the `port` / `host` options, else PORT / HOST, else port 3000 on 0.0.0.0.
@@ -56,13 +58,21 @@ export function netOptionsFrom(opts) {
   return netOptions;
 }
 
-/** lobby.js Lobby options out of the startServer() options. */
+/** lobby.js Lobby options out of the startServer() options; `debugRooms` falls back to SP_DEBUG. */
 export function lobbyOptionsFrom(opts) {
   const lobbyOptions = {};
   for (const k of LOBBY_OPTION_KEYS) {
     if (opts[k] != null) lobbyOptions[k] = opts[k];
   }
+  if (lobbyOptions.debugRooms == null) lobbyOptions.debugRooms = parseDebugRooms(process.env.SP_DEBUG);
+  else lobbyOptions.debugRooms = !!lobbyOptions.debugRooms;
   return lobbyOptions;
+}
+
+/** SP_DEBUG env → lobby.js debugRooms (DESIGN §27): on unless explicitly switched off. @param {string | undefined} v */
+export function parseDebugRooms(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  return !['0', 'false', 'no', 'off', 'never'].includes(s);
 }
 
 /** TRUST_PROXY env → net.js trustProxy ('auto' unless explicitly on/off). @param {string | undefined} v */
