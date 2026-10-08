@@ -134,9 +134,12 @@ export function debugSummary(c, names = {}) {
   return out;
 }
 
-/** Display name of a 特训敌人 type: its factions.json `name` after the middle dot (「特训敌人·飞行」 → 飞行), else the type. */
+/**
+ * Display name of a 特训敌人 type: its factions.json `name` (localized) after the separator each client uses — 「特训敌人·飞行」
+ * → 飞行, 「訓練用仮想敵・飛行」 (JP), 「특훈 적 - 비행」 (KR), 「Tactical Training/Flying」 (EN) — else the type.
+ */
 export function factionTypeName(factions, type) {
   const rec = isObj(factions?.types) ? Object.values(factions.types).find((x) => isObj(x) && x.type === type) : null;
   const n = rec && typeof rec.name === 'string' ? rec.name : '';
-  return n ? n.split(/[·・]/).pop().trim() || n : type;
+  return n ? n.split(/[·・\/]| - /).pop().trim() || n : type;
 }

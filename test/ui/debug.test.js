@@ -95,9 +95,13 @@ test('debugSummary: one line per setting that differs from the official match, w
   assert.deepEqual(debugSummary({ ...defaultDebugConfig(), bans: { mode: 'custom', bonds: [] } }), ['不禁用盟约']);
 });
 
-test('factionTypeName: the 特训敌人 record\'s name after the middle dot, else the type; parseIntField', () => {
+test('factionTypeName: the 特训敌人 record\'s name after its separator (· ・ " - " /), else the type; parseIntField', () => {
   const factions = { types: { a: { type: 'FLY', name: '特训敌人·飞行' }, b: { type: 'DOT', name: 'DOT' } } };
   assert.equal(factionTypeName(factions, 'FLY'), '飞行');
+  // the other clients' separators (data/i18n/<code>.json): JP ・, KR " - ", EN /
+  for (const [name, want] of [['訓練用仮想敵・飛行', '飛行'], ['특훈 적 - 비행', '비행'], ['Tactical Training/Flying', 'Flying'], ['特訓敵人·飛行', '飛行']]) {
+    assert.equal(factionTypeName({ types: { a: { type: 'FLY', name } } }, 'FLY'), want, name);
+  }
   assert.equal(factionTypeName(factions, 'DOT'), 'DOT');
   assert.equal(factionTypeName(factions, 'TIMES'), 'TIMES');
   assert.equal(factionTypeName(null, 'FLY'), 'FLY');
