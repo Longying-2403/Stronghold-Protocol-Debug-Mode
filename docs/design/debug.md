@@ -136,7 +136,8 @@ for those the shop never offers; the player's own 自选 picks apart) and the it
 `test/lobby-debug.test.js` (the way in, the switches, the confirmation, the host's settings — server and client sides),
 `test/match/debug.test.js` (the setup overrides against an ordinary match of the same seed, the start state, every
 operation with its rights and phases, speed, pause, the frozen countdown, ending a battle, jumping, the LP lock, a debug
-room fuzzed with the match invariants), `test/shared-debug.test.js` (`shared/debug.js`), `test/ui/gameLogic-debug.test.js`
-(`ui/gameLogic/debug.js`); `test/match/fuzz.test.js` sends `g.debug` to ordinary matches (`BAD_MSG`, never `INTERNAL`).
+room fuzzed with the match invariants), `test/debug.test.js` (`shared/debug.js`), `test/ui/debug.test.js`
+(`ui/gameLogic/debug.js`, `ui/debugMode.js`), `test/ui/debug.e2e.test.js` (the whole flow in a browser, `SP_E2E=1`);
+`test/match/fuzz.test.js` sends `g.debug` to ordinary matches (`BAD_MSG`, never `INTERNAL`).
 
 ---
